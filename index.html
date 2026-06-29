@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1859,9 +1860,9 @@ body.media-playing .play-action{
    ═══════════════════════════════════════════════════════════ */
 
 const ARBITER_URL = 'https://recast-reviver-outlook.ngrok-free.dev/v1/compare';
-const RETURN_COUNT = 10;
+const RETURN_COUNT = 50;
 const IS_MOBILE = window.matchMedia('(max-width: 760px), (pointer: coarse)').matches;
-const BATCH_SIZE = IS_MOBILE ? 48 : 128;
+const BATCH_SIZE = IS_MOBILE ? 96 : 256;
 const MAX_RETRIES = IS_MOBILE ? 2 : 1;
 /* ─── The Hidden Gem catalog ───
    Every entry is a real title currently on Hidden Gem, with its real
@@ -2135,32 +2136,31 @@ function isSerialOrEpisodeTitle(title) {
   );
 }
 
-function isFilmSearchCandidate(item) {
+function isSearchableCatalogCandidate(item) {
   const f = fieldText(item);
-  const overview = cleanCandidateString(item.overview);
-  const title = String(item.title || '');
+  const title = String(item.title || '').trim();
+  const poster = String(item.poster || item.backdrop || '').trim();
 
-  // Hard remove non-film / non-story surfaces from the semantic field.
-  if (/\b(merch|product|soundtrack|music video|dry bar|stand[-\s]?up|comedy special|live theatre|live theater|live audience|stage play|play\s*\(|workplace drama live|san diego live|bakersfield)\b/i.test(f)) return false;
+  // Keep the catalog broad. Do not throw out TV/serials/short blurbs.
+  // Only remove obvious non-watchable/non-story surfaces.
+  if (!title) return false;
+  if (/\b(merch|product|soundtrack|music video)\b/i.test(f)) return false;
 
-  // Hard remove TV / serial / episodic material. This is what let old Batman
-  // serials enter the match field even when the wall visually deduped them.
-  if (/\btv shows?\b/i.test(f)) return false;
-  if (isSerialOrEpisodeTitle(title)) return false;
-
-  // ARBITER works better when candidates have enough semantic mass. Sparse
-  // runtime/title blurbs create weak attractors and unstable matches.
-  const wordCount = overview.split(/\s+/).filter(Boolean).length;
-  if (wordCount < 30) return false;
-
+  // If an item has no image, the fallback poster still makes it renderable/searchable.
   return true;
 }
 
 function candidateBody(item) {
-  // ARBITER candidate text must stay clean: no title/year/rating/catalog labels,
-  // no pricing/platform vocabulary, no explanatory wrapper. The UI keeps metadata;
-  // the semantic field receives only the story description.
-  return cleanCandidateString(item.overview);
+  // Broad catalog mode: include title/category metadata so sparse TV entries,
+  // serials, shorts, and brief blurbs still have enough semantic mass.
+  const parts = [
+    titleWithoutYear(item.title),
+    item.genre,
+    Array.isArray(item.categories) ? item.categories.join(' ') : '',
+    cleanCandidateString(item.overview)
+  ].filter(Boolean);
+
+  return parts.join('. ').replace(/\s+/g, ' ').trim();
 }
 
 function loadCorpus() {
@@ -2182,7 +2182,7 @@ function loadCorpus() {
     };
   });
 
-  corpus = rawCatalog.filter(isFilmSearchCandidate);
+  corpus = rawCatalog.filter(isSearchableCatalogCandidate);
 
   candidateMap = new Map();
   candidates = corpus.map((m) => {
@@ -2193,9 +2193,9 @@ function loadCorpus() {
 
   document.body.classList.remove('corpus-loading');
   document.body.classList.add('corpus-ready');
-  corpusLoadText.textContent = `${corpus.length} clean story candidates indexed from ${rawCatalog.length} catalog entries`;
-  corpusCountEl.textContent = `${corpus.length} clean story candidates indexed`;
-  statusEl.textContent = `${corpus.length} clean story candidates ready`;
+  corpusLoadText.textContent = `${corpus.length} catalog candidates indexed from ${rawCatalog.length} catalog entries`;
+  corpusCountEl.textContent = `${corpus.length} catalog candidates indexed`;
+  statusEl.textContent = `${corpus.length} catalog candidates ready`;
   renderWall(corpus);
 }
 
@@ -2283,7 +2283,7 @@ function renderWall(movies) {
     return true;
   });
 
-  const subset = shuffleArray([...unique]).slice(0, IS_MOBILE ? 42 : 96);
+  const subset = shuffleArray([...unique]).slice(0, IS_MOBILE ? 180 : 320);
 
   wall.innerHTML = subset.map(m => `
     <div class="wall-cell ${mediaClass(m)}" data-type="${mediaKind(m)}" data-id="${m.id}">
